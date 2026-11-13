@@ -8,7 +8,7 @@ import {
   reauthenticateWithCredential,
   serverTimestamp,
 } from "../fb.js";
-import { $, esc, toast, friendlyError, passwordProblem, LEAVE_TYPES, fmtDate } from "../util.js";
+import { $, esc, toast, friendlyError, passwordProblem, LEAVE_TYPES, fmtDate, wfhLimit } from "../util.js";
 
 export async function render(el, ctx) {
   const p = ctx.profile;
@@ -26,6 +26,7 @@ export async function render(el, ctx) {
           <dt>Leave quota</dt><dd>${["casual", "sick", "earned"]
             .map((t) => `${LEAVE_TYPES[t].replace(" leave", "")}: ${p.quotas?.[t] ?? 0}`)
             .join(" · ")}</dd>
+          <dt>Work from home</dt><dd>Up to ${wfhLimit(p)} day(s) a week</dd>
         </dl>
         <p class="muted small">To change these details, ask an admin.</p>
       </section>

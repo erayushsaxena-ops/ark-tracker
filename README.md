@@ -62,9 +62,9 @@ Nothing needs to be installed on your computer. Every step happens in a web brow
 ## How it works
 
 - **Roles:** admins see everything and manage people, projects and the calendar. Employees see only their own timesheets and requests, plus every active project.
-- **Timesheets:** one sheet per person per week, in hours per project per day with a task note. Holidays, off days, full-day leave and future dates are locked. Submitting locks the week; an admin can unlock it from **Timesheets**.
-- **Leave & WFH:** request types are Casual, Sick, Earned or WFH, with half-day support. Days are counted on working days only. Any admin's approval or rejection is final. Balances reset every calendar year.
-- **Dashboard:** shows who is in the office, on WFH or on leave today, what each person is working on this week, missing or late timesheets from last week, hours by employee and by project for any date range, and CSV exports.
+- **Timesheets:** one sheet per person per week, in hours per project per day with a task note. Tick **Site visit** on a row to mark that task as a site visit. Holidays, off days, full-day leave and future dates are locked. Submitting locks the week; an admin can unlock it from **Timesheets**.
+- **Leave & WFH:** request types are Casual, Sick, Earned or WFH, with half-day support. Days are counted on working days only. Any admin's approval or rejection is final. Balances reset every calendar year. Work from home is capped per person per week (2 by default; set it on **Employees**).
+- **Dashboard:** shows who is in the office, on WFH or on leave today, what each person is working on this week, who is on a site visit today, missing or late timesheets from last week, hours by employee and by project, site visits by project and employee for any date range, and CSV exports.
 - **Removing someone** deletes their login but keeps their history for reports. **Deactivate** blocks sign-in without deleting anything.
 - **Free-plan limits:** Firestore allows 50,000 reads and 20,000 writes a day, far more than a studio this size uses. Cloudflare Workers is free up to 100,000 requests a day.
 

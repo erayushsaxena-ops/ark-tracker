@@ -15,6 +15,12 @@ import {
   fmtRange,
   fmtTs,
   round2,
+  wfhLimit,
+  wfhByWeek,
+  daysByWeek,
+  weekStartOf,
+  fmtShort,
+  addDays,
 } from "../util.js";
 
 export const statusPill = (s) => `<span class="status ${s === "approved" ? "ok" : s === "pending" ? "draft" : s === "rejected" ? "bad" : "none"}">${esc(s[0].toUpperCase() + s.slice(1))}</span>`;
@@ -25,6 +31,10 @@ export async function render(el, ctx) {
   const year = new Date().getFullYear();
   const usage = leaveUsage(requests, year);
   const left = (t) => round2((p.quotas?.[t] ?? 0) - usage[t].used - usage[t].pending);
+  const wfhMax = wfhLimit(p);
+  const wfhWeeks = wfhByWeek(requests, ctx.cal);
+  const thisWeek = weekStartOf(todayStr());
+  const wfhThisWeek = round2(wfhWeeks.get(thisWeek) || 0);
 
   el.innerHTML = `
     <h1>Leave &amp; work from home</h1>
@@ -35,7 +45,8 @@ export async function render(el, ctx) {
             <small>left of ${p.quotas?.[t] ?? 0} · ${round2(usage[t].used)} used${usage[t].pending ? ` · ${round2(usage[t].pending)} pending` : ""}</small></div>`
         )
         .join("")}
-      <div class="stat"><span>Work from home</span><strong>${round2(usage.wfh.used)}</strong><small>days approved in ${year}</small></div>
+      <div class="stat"><span>Work from home · this week</span><strong>${round2(Math.max(0, wfhMax - wfhThisWeek))}</strong>
+        <small>left of ${wfhMax} per week · ${wfhThisWeek} used or pending · ${round2(usage.wfh.used)} approved in ${year}</small></div>
     </div>
 
     <div class="grid two">
@@ -110,6 +121,13 @@ export async function render(el, ctx) {
     if (days <= 0) return fail("Those dates are all holidays or off days.");
     const clash = requests.find((r) => (r.status === "pending" || r.status === "approved") && overlaps(from, to, r.from, r.to));
     if (clash) return fail(`You already have a ${clash.status} request for ${fmtRange(clash.from, clash.to)}.`);
+    if (type === "wfh") {
+      for (const [w, d] of daysByWeek(from, to, form.half.checked, ctx.cal)) {
+        const already = wfhWeeks.get(w) || 0;
+        if (already + d > wfhMax)
+          return fail(`You can work from home up to ${wfhMax} day(s) a week. The week of ${fmtShort(w)}–${fmtShort(addDays(w, 6))} already has ${round2(already)}.`);
+      }
+    }
     if (isLeave(type)) {
       if (from.slice(0, 4) !== to.slice(0, 4)) return fail("Please split leave that crosses into a new year into two requests.");
       const u = leaveUsage(requests, from.slice(0, 4))[type];

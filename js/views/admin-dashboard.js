@@ -49,9 +49,23 @@ export async function render(el, ctx) {
     for (const e of s.entries || [])
       for (const [date, h] of Object.entries(e.hours || {}))
         if (date >= range.from && date <= range.to && h > 0)
-          lines.push({ date, uid: s.uid, projectId: e.projectId, project: projName(e.projectId, e.projectName), note: e.note, hours: h, wfh: (s.wfhDates || []).includes(date), status: s.status });
+          lines.push({ date, uid: s.uid, projectId: e.projectId, project: projName(e.projectId, e.projectName), note: e.note, hours: h, siteVisit: !!e.siteVisit, wfh: (s.wfhDates || []).includes(date), status: s.status });
 
   const sum = (arr) => round2(arr.reduce((t, x) => t + x.hours, 0));
+  // One site visit = one person, one project, one day (hours summed)
+  const visitMap = new Map();
+  for (const l of lines.filter((x) => x.siteVisit)) {
+    const k = `${l.date}|${l.uid}|${l.projectId}`;
+    const v = visitMap.get(k);
+    if (v) (v.hours = round2(v.hours + l.hours)), (v.note = [v.note, l.note].filter(Boolean).join("; "));
+    else visitMap.set(k, { ...l });
+  }
+  const visits = [...visitMap.values()].sort((a, b) => b.date.localeCompare(a.date) || nameOf(a.uid).localeCompare(nameOf(b.uid)));
+  const countChips = (arr, keyFn) =>
+    [...arr.reduce((m, x) => m.set(keyFn(x), (m.get(keyFn(x)) || 0) + 1), new Map()).entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `<span class="chip">${esc(k)} <b>${n}</b></span>`)
+      .join("");
   const group = (arr, key) => arr.reduce((m, x) => (m.set(x[key], [...(m.get(x[key]) || []), x]), m), new Map());
   const byUser = group(lines, "uid");
   const byProject = group(lines, "project");
@@ -75,12 +89,14 @@ export async function render(el, ctx) {
     if (leave) (where = `${LEAVE_TYPES[leave.type]}${leave.half ? " (half day)" : ""}`), (cls = "bad");
     else if (wfh) (where = "Working from home"), (cls = "draft");
     const ws = weekSheets.get(u.id);
+    const siteToday = (ws?.entries || []).filter((e) => e.siteVisit && e.hours?.[today] > 0);
+    const siteChips = siteToday.map((e) => `<span class="status site">Site visit · ${esc(projName(e.projectId, e.projectName))}</span>`).join(" ");
     const work = ws
       ? [...new Map((ws.entries || []).filter((e) => Object.keys(e.hours || {}).length).map((e) => [e.projectId + e.note, e])).values()]
-          .map((e) => `<div><b>${esc(projName(e.projectId, e.projectName))}</b>${e.note ? ` — ${esc(e.note)}` : ""}</div>`)
+          .map((e) => `<div><b>${esc(projName(e.projectId, e.projectName))}</b>${e.note ? ` — ${esc(e.note)}` : ""}${e.siteVisit ? ` <span class="tag site">Site visit</span>` : ""}</div>`)
           .join("")
       : "";
-    return `<tr><td><strong>${esc(u.name || u.username)}</strong></td><td><span class="status ${cls}">${esc(where)}</span></td>
+    return `<tr><td><strong>${esc(u.name || u.username)}</strong></td><td><span class="status ${cls}">${esc(where)}</span>${siteChips ? `<div class="chips">${siteChips}</div>` : ""}</td>
       <td class="small">${work || `<span class="muted">Nothing logged yet this week</span>`}</td></tr>`;
   });
 
@@ -161,6 +177,29 @@ export async function render(el, ctx) {
     </section>
 
     <section class="card">
+      <div class="toolbar">
+        <h3>Site visits</h3>
+        <button class="btn small" id="csv-site">Export site visits (CSV)</button>
+      </div>
+      <p class="muted small">${fmtDate(range.from)} – ${fmtDate(range.to)} · ${visits.length} site visit${visits.length === 1 ? "" : "s"} · ${sum(visits)} hours (logged as site visit on timesheets, drafts included)</p>
+      ${
+        visits.length
+          ? `<div class="grid two">
+              <div><h4>By project</h4><div class="chips">${countChips(visits, (v) => v.project)}</div></div>
+              <div><h4>By employee</h4><div class="chips">${countChips(visits, (v) => nameOf(v.uid))}</div></div>
+            </div>
+            <div class="table-scroll" style="margin-top:12px"><table class="list">
+              <thead><tr><th>Date</th><th>Employee</th><th>Project</th><th>Task / note</th><th class="num">Hours</th></tr></thead>
+              <tbody>${visits
+                .slice(0, 100)
+                .map((v) => `<tr><td class="nowrap">${fmtDate(v.date)}</td><td>${esc(nameOf(v.uid))}</td><td><strong>${esc(v.project)}</strong></td><td>${esc(v.note || "")}</td><td class="num">${v.hours}</td></tr>`)
+                .join("")}</tbody></table></div>
+            ${visits.length > 100 ? `<p class="muted small">Showing the latest 100. Export the CSV for all of them.</p>` : ""}`
+          : `<p class="muted">No site visits logged in this range.</p>`
+      }
+    </section>
+
+    <section class="card">
       <h3>Recent admin activity</h3>
       ${
         auditSnap.empty
@@ -182,8 +221,14 @@ export async function render(el, ctx) {
 
   $("#csv-time", el).onclick = () =>
     downloadCsv(`timesheets_${range.from}_to_${range.to}.csv`, [
-      ["Date", "Employee", "Project", "Task / note", "Hours", "WFH", "Week status"],
-      ...lines.sort((a, b) => a.date.localeCompare(b.date) || nameOf(a.uid).localeCompare(nameOf(b.uid))).map((l) => [l.date, nameOf(l.uid), l.project, l.note, l.hours, l.wfh ? "Yes" : "", l.status]),
+      ["Date", "Employee", "Project", "Task / note", "Hours", "Site visit", "WFH", "Week status"],
+      ...lines.sort((a, b) => a.date.localeCompare(b.date) || nameOf(a.uid).localeCompare(nameOf(b.uid))).map((l) => [l.date, nameOf(l.uid), l.project, l.note, l.hours, l.siteVisit ? "Yes" : "", l.wfh ? "Yes" : "", l.status]),
+    ]);
+
+  $("#csv-site", el).onclick = () =>
+    downloadCsv(`site_visits_${range.from}_to_${range.to}.csv`, [
+      ["Date", "Employee", "Project", "Task / note", "Hours"],
+      ...[...visits].reverse().map((v) => [v.date, nameOf(v.uid), v.project, v.note, v.hours]),
     ]);
 
   $("#csv-leave", el).onclick = () =>

@@ -94,6 +94,36 @@ export function leaveUsage(requests, year) {
 
 export const overlaps = (a1, a2, b1, b2) => a1 <= b2 && b1 <= a2;
 
+// ── Work-from-home weekly limit ───────────────────────────────
+export const WFH_PER_WEEK_DEFAULT = 2;
+export const wfhLimit = (user) => {
+  const v = user?.quotas?.wfhPerWeek;
+  return v === undefined || v === null || v === "" ? WFH_PER_WEEK_DEFAULT : Number(v);
+};
+
+/** Working days a request covers, split by week: Map(monday -> days) */
+export function daysByWeek(from, to, half, cal) {
+  const out = new Map();
+  if (!from || !to || to < from) return out;
+  for (let s = from; s <= to; s = addDays(s, 1)) {
+    const t = dayType(s, cal);
+    let d = t === "full" ? 1 : t === "half" ? 0.5 : 0;
+    if (half && from === to && d > 0) d = 0.5;
+    if (d) out.set(weekStartOf(s), (out.get(weekStartOf(s)) || 0) + d);
+  }
+  return out;
+}
+
+/** WFH days already approved or pending, per week: Map(monday -> days) */
+export function wfhByWeek(requests, cal, excludeId) {
+  const out = new Map();
+  for (const r of requests) {
+    if (r.type !== "wfh" || r.id === excludeId || (r.status !== "approved" && r.status !== "pending")) continue;
+    for (const [w, d] of daysByWeek(r.from, r.to, r.half, cal)) out.set(w, (out.get(w) || 0) + d);
+  }
+  return out;
+}
+
 // ── DOM helpers ───────────────────────────────────────────────
 export const esc = (v) =>
   String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

@@ -1,6 +1,6 @@
 import { db, doc, setDoc, updateDoc, serverTimestamp, listAll, callWorker, audit } from "../fb.js";
 import { DEFAULT_EMPLOYEE_PASSWORD } from "../config.js";
-import { $, $$, esc, toast, busy, modal, confirmBox, passwordProblem, fmtDate, todayStr, num } from "../util.js";
+import { $, $$, esc, toast, busy, modal, confirmBox, passwordProblem, fmtDate, todayStr, num, wfhLimit } from "../util.js";
 
 let showRemoved = false;
 
@@ -22,9 +22,10 @@ const profileFields = (u = {}) => `
       <label>Sick<input type="number" name="sick" min="0" step="0.5" value="${u.quotas?.sick ?? 6}"></label>
       <label>Earned<input type="number" name="earned" min="0" step="0.5" value="${u.quotas?.earned ?? 12}"></label>
     </div>
-  </fieldset>`;
+  </fieldset>
+  <label>Work-from-home days allowed per week<input type="number" name="wfhPerWeek" min="0" max="7" step="0.5" value="${wfhLimit(u)}"></label>`;
 
-const quotasFrom = (v) => ({ casual: num(v.casual), sick: num(v.sick), earned: num(v.earned) });
+const quotasFrom = (v) => ({ casual: num(v.casual), sick: num(v.sick), earned: num(v.earned), wfhPerWeek: num(v.wfhPerWeek) });
 
 export async function render(el, ctx) {
   const users = (await listAll("users")).sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username));
@@ -39,7 +40,7 @@ export async function render(el, ctx) {
     </div>
     <section class="card">
       <div class="table-scroll"><table class="list">
-        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Designation</th><th>Joined</th><th>Leave quota (C/S/E)</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Designation</th><th>Joined</th><th>Leave quota (C/S/E)</th><th>WFH / week</th><th>Status</th><th></th></tr></thead>
         <tbody>${shown
           .map(
             (u) => `<tr class="${u.active === false ? "dim" : ""}">
@@ -49,6 +50,7 @@ export async function render(el, ctx) {
               <td>${esc(u.designation || "")}</td>
               <td>${u.joiningDate ? fmtDate(u.joiningDate) : ""}</td>
               <td>${u.quotas?.casual ?? 0} / ${u.quotas?.sick ?? 0} / ${u.quotas?.earned ?? 0}</td>
+              <td>${wfhLimit(u)}</td>
               <td>${u.deleted ? "Removed" : u.active === false ? "Inactive" : u.mustChangePassword ? "Active · must set password" : "Active"}</td>
               <td class="nowrap">${
                 u.deleted

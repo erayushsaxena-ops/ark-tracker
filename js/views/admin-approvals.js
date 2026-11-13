@@ -1,5 +1,5 @@
 import { db, doc, updateDoc, serverTimestamp, listAll, audit } from "../fb.js";
-import { $$, esc, toast, busy, modal, leaveUsage, LEAVE_TYPES, isLeave, fmtRange, fmtTs, round2 } from "../util.js";
+import { $$, esc, toast, busy, modal, leaveUsage, LEAVE_TYPES, isLeave, fmtRange, fmtTs, round2, wfhLimit, wfhByWeek, daysByWeek, fmtShort } from "../util.js";
 import { statusPill } from "./leave.js";
 
 export async function render(el, ctx) {
@@ -12,6 +12,16 @@ export async function render(el, ctx) {
     .slice(0, 50);
 
   const balance = (r) => {
+    if (r.type === "wfh") {
+      const u = userById.get(r.uid);
+      const max = wfhLimit(u);
+      const others = wfhByWeek(requests.filter((x) => x.uid === r.uid && x.status === "approved"), ctx.cal, r.id);
+      const notes = [...daysByWeek(r.from, r.to, r.half, ctx.cal)].map(([w, d]) => {
+        const total = round2((others.get(w) || 0) + d);
+        return `${total} of ${max} WFH in week of ${fmtShort(w)}${total > max ? ` <b class="warn">· over limit</b>` : ""}`;
+      });
+      return notes.length ? `<div class="muted small">${notes.join("<br>")}</div>` : "";
+    }
     if (!isLeave(r.type)) return "";
     const u = userById.get(r.uid);
     const use = leaveUsage(

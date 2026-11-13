@@ -54,8 +54,10 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-function brand() {
-  return `<div class="brand"><span class="mark">A</span><div><strong>${esc(STUDIO_NAME)}</strong><small>Team tracker</small></div></div>`;
+function brand(kind = "full") {
+  if (kind === "bar")
+    return `<div class="brand bar"><img src="logo-mark-light.png" alt="${esc(STUDIO_NAME)}"><span>Team tracker</span></div>`;
+  return `<div class="brand full"><img src="logo-full.png" alt="${esc(STUDIO_NAME)} — Architecture, Interior, Vaastu"><small>Team tracker</small></div>`;
 }
 
 function renderLogin() {
@@ -124,7 +126,7 @@ function renderShell() {
   root.innerHTML = `
     <header class="topbar">
       <button class="menu-btn" aria-label="Menu">☰</button>
-      ${brand()}
+      ${brand("bar")}
       <div class="who"><span>${esc(ctx.profile.name || ctx.profile.username)}</span>
         ${ctx.isAdmin ? `<span class="pill">Admin</span>` : ""}
         <button class="btn ghost small" id="signout">Sign out</button></div>

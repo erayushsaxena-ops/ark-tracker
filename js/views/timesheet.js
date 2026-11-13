@@ -89,6 +89,13 @@ export async function renderSheet(el, ctx, opts) {
             : esc(projectName(r.projectId) || r.projectName || "—")
         }</td>
         <td class="note">${editable ? `<input name="note" value="${esc(r.note)}" placeholder="What did you work on?" maxlength="200">` : esc(r.note || "")}</td>
+        <td class="sv">${
+          editable
+            ? `<label class="sv-check" title="Tick if this task was a site visit"><input type="checkbox" name="sv" ${r.siteVisit ? "checked" : ""}><span>Site visit</span></label>`
+            : r.siteVisit
+            ? `<span class="tag site">Site visit</span>`
+            : ""
+        }</td>
         ${info
           .map((x) => {
             const v = r.hours[x.d] || "";
@@ -120,7 +127,7 @@ export async function renderSheet(el, ctx, opts) {
       <div class="table-scroll">
         <table class="sheet">
           <thead><tr>
-            <th>Project</th><th>Task / note</th>
+            <th>Project</th><th>Task / note</th><th class="sv">Site visit</th>
             ${info
               .map(
                 (x) => `<th class="h ${x.cls}">${DAY_LABELS[dayKey(x.d)]}<small>${fmtShort(x.d)}</small>${
@@ -132,8 +139,8 @@ export async function renderSheet(el, ctx, opts) {
           </tr></thead>
           <tbody>${rows.map(rowHtml).join("")}</tbody>
           <tfoot>
-            <tr class="day-tot"><td colspan="2">Day total</td>${info.map((x) => `<td class="h" data-daytot="${x.d}"></td>`).join("")}<td class="tot" data-grand></td>${editable ? "<td></td>" : ""}</tr>
-            <tr class="expected"><td colspan="2">Expected</td>${info.map((x) => `<td class="h">${x.expected ? round2(x.expected) : "—"}</td>`).join("")}<td class="tot">${round2(info.reduce((s, x) => s + x.expected, 0))}</td>${editable ? "<td></td>" : ""}</tr>
+            <tr class="day-tot"><td colspan="3">Day total</td>${info.map((x) => `<td class="h" data-daytot="${x.d}"></td>`).join("")}<td class="tot" data-grand></td>${editable ? "<td></td>" : ""}</tr>
+            <tr class="expected"><td colspan="3">Expected</td>${info.map((x) => `<td class="h">${x.expected ? round2(x.expected) : "—"}</td>`).join("")}<td class="tot">${round2(info.reduce((s, x) => s + x.expected, 0))}</td>${editable ? "<td></td>" : ""}</tr>
           </tfoot>
         </table>
       </div>
@@ -145,7 +152,7 @@ export async function renderSheet(el, ctx, opts) {
                <button class="btn" id="save">Save draft</button>
                <button class="btn primary" id="submit">Submit week</button>
              </div>
-             <p class="muted small">Future dates, holidays, off days and full-day leave are locked. Once submitted, the week is locked; ask an admin to unlock it if you need to fix something.</p>`
+             <p class="muted small">Tick <b>Site visit</b> on a row when that task was done at site; use a separate row for site work and studio work on the same project. Future dates, holidays, off days and full-day leave are locked. Once submitted, the week is locked; ask an admin to unlock it if you need to fix something.</p>`
           : ""
       }
       ${!opts.mine && submitted ? `<div class="actions"><button class="btn" id="unlock">Unlock week for editing</button></div>` : ""}
@@ -162,7 +169,7 @@ export async function renderSheet(el, ctx, opts) {
           if (v > 0) hours[inp.dataset.d] = v;
         });
         const projectId = $("select[name=project]", tr).value;
-        return { projectId, projectName: projectName(projectId) || "", note: $("input[name=note]", tr).value.trim(), hours };
+        return { projectId, projectName: projectName(projectId) || "", note: $("input[name=note]", tr).value.trim(), siteVisit: $("input[name=sv]", tr).checked, hours };
       });
     }
 
@@ -202,17 +209,18 @@ export async function renderSheet(el, ctx, opts) {
         if (!e.target.closest("[data-del]")) return;
         const tr = e.target.closest("tr");
         if ($$("tr", tbody).length === 1) {
-          $$("input", tr).forEach((i) => (i.value = ""));
+          $$("input", tr).forEach((i) => (i.type === "checkbox" ? (i.checked = false) : (i.value = "")));
           $("select", tr).value = "";
         } else tr.remove();
         recalc();
       });
       $("#add-row", el).onclick = () => {
-        tbody.insertAdjacentHTML("beforeend", rowHtml({ projectId: "", note: "", hours: {} }, tbody.children.length));
+        tbody.insertAdjacentHTML("beforeend", rowHtml({ projectId: "", note: "", siteVisit: false, hours: {} }, tbody.children.length));
       };
 
       const save = async (status) => {
-        const cur = readRows().filter((r) => r.projectId || r.note || Object.keys(r.hours).length);
+        const cur = readRows().filter((r) => r.projectId || r.note || r.siteVisit || Object.keys(r.hours).length);
+        if (cur.some((r) => r.siteVisit && !Object.keys(r.hours).length)) throw new Error("Enter the hours for each site visit row.");
         if (cur.some((r) => Object.keys(r.hours).length && !r.projectId)) throw new Error("Choose a project for every row that has hours.");
         for (const x of info) {
           if (cur.reduce((s, r) => s + (r.hours[x.d] || 0), 0) > 24) throw new Error(`More than 24 hours on ${fmtDate(x.d)}.`);
@@ -234,6 +242,7 @@ export async function renderSheet(el, ctx, opts) {
           entries: cur,
           totalHours: total,
           wfhDates: info.filter((x) => x.wfh && cur.some((r) => r.hours[x.d])).map((x) => x.d),
+          siteVisitDates: info.filter((x) => cur.some((r) => r.siteVisit && r.hours[x.d])).map((x) => x.d),
           updatedAt: serverTimestamp(),
         };
         if (status === "submitted") data.submittedAt = serverTimestamp();
