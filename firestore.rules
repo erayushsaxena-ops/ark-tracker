@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// Ark Tracker — Firestore security rules
+// Paste into Firebase console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function isActive() { return signedIn() && exists(myDoc()) && get(myDoc()).data.active == true; }
+    function isAdmin() { return isActive() && get(myDoc()).data.role == 'admin'; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // People. Employees can read their own profile and clear their own "must change password" flag.
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && changed().hasOnly(['mustChangePassword', 'passwordChangedAt'])
+            && request.resource.data.mustChangePassword == false);
+    }
+
+    // Reference data: everyone signed in can read, only admins can change.
+    match /projects/{id} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /holidays/{id} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    match /settings/{id} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    // Timesheets: one document per person per week, id = "<uid>_<monday>".
+    // Employees edit their own week until it is submitted; admins can unlock it.
+    match /timesheets/{id} {
+      allow read: if isAdmin() || (isActive() && id.split('_')[0] == request.auth.uid);
+      allow create: if isAdmin()
+        || (isActive()
+            && request.resource.data.uid == request.auth.uid
+            && id == request.auth.uid + '_' + request.resource.data.weekStart
+            && request.resource.data.status in ['draft', 'submitted']);
+      allow update: if isAdmin()
+        || (isActive()
+            && resource.data.uid == request.auth.uid
+            && resource.data.status == 'draft'
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.weekStart == resource.data.weekStart
+            && request.resource.data.status in ['draft', 'submitted']);
+      allow delete: if isAdmin();
+    }
+
+    // Leave & WFH requests. Employees create pending requests and may cancel them; admins decide.
+    match /requests/{id} {
+      allow read: if isAdmin() || (isActive() && resource.data.uid == request.auth.uid);
+      allow create: if isActive()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.type in ['casual', 'sick', 'earned', 'wfh']
+        && request.resource.data.days is number
+        && request.resource.data.days > 0;
+      allow update: if isAdmin()
+        || (isActive()
+            && resource.data.uid == request.auth.uid
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'cancelled'
+            && changed().hasOnly(['status', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // Admin activity log
+    match /audit/{id} {
+      allow read, create: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ark Tracker · First-time setup</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="center-card" style="max-width:640px" id="f">
+      <div class="brand"><span class="mark">A</span><div><strong>The Ark Studio</strong><small>First-time setup</small></div></div>
+      <p class="muted">Run this once to create the first admin and employee logins. It stops working as soon as an admin exists.</p>
+      <label>Setup secret (the BOOTSTRAP_SECRET you set on the Cloudflare worker)
+        <input name="secret" type="password" required></label>
+      <label>Accounts (paste the contents of your private <code>seed.private.json</code>)
+        <textarea name="users" rows="14" required spellcheck="false" style="font-family:monospace;font-size:13px"></textarea></label>
+      <p class="form-error" hidden></p>
+      <button class="btn primary" type="submit">Create accounts</button>
+      <pre id="out" class="small" style="white-space:pre-wrap;margin:0"></pre>
+    </form>
+  </div>
+  <script type="module">
+    import { WORKER_URL } from "./js/config.js";
+    const f = document.getElementById("f");
+    const err = f.querySelector(".form-error");
+    const out = document.getElementById("out");
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      err.hidden = true;
+      out.textContent = "";
+      let parsed;
+      try {
+        parsed = JSON.parse(f.users.value);
+      } catch {
+        err.textContent = "That isn't valid JSON. Paste the whole file, including the [ and ].";
+        err.hidden = false;
+        return;
+      }
+      const btn = f.querySelector("button");
+      btn.disabled = true;
+      try {
+        const res = await fetch(WORKER_URL.replace(/\/$/, "") + "/bootstrap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ secret: f.secret.value, users: Array.isArray(parsed) ? parsed : parsed.users }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
+        out.textContent = json.results.map((r) => `${r.ok ? "✓" : "✗"} ${r.username}${r.error ? " — " + r.error : ""}`).join("\n") +
+          "\n\nDone. Now remove BOOTSTRAP_SECRET from the worker and open the app to sign in.";
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
